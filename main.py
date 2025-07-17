@@ -1,61 +1,76 @@
 from flask import Flask, request, jsonify
-from flask_cors import CORS
-from datetime import datetime
+from flask_cors import CORS  # Importar CORS
 
 app = Flask(__name__)
-CORS(app)  # Habilita CORS para todas las rutas
+CORS(app)  # Habilitar CORS para todas las rutas
 
-# Variables de estado
+# Variable global para almacenar el último comando
 ultimo_comando = ""
-coordenadas_actuales = {"X": 0, "Y": 0, "Z": 0}
+ultima_respuesta = ""
 
-# Ruta de verificación
-@app.route("/")
-def home():
-    return jsonify({"status": "ok", "message": "API lista"})
+@app.route("/", methods=["GET"])
+def index():
+    return jsonify({"message": "API funcionando correctamente"}), 200
 
-# Ruta para recibir comandos (compatible con tu HMI actual)
-@app.route("/api/mensaje", methods=["POST"])
+# Ruta para que el HMI envíe comandos
+@app.route("/api/comando", methods=["POST"])
 def recibir_comando():
-    global ultimo_comando, coordenadas_actuales
+    global ultimo_comando
     data = request.get_json()
-    
     if not data:
-        return jsonify({"error": "Datos inválidos"}), 400
+        return jsonify({"status": "error", "message": "No se recibió JSON"}), 400
     
-    # Compatibilidad con formato antiguo y nuevo
-    comando = data.get("comando") or data.get("mensaje", "")
-    
-    if not comando:
-        return jsonify({"error": "Comando vacío"}), 400
-    
-    ultimo_comando = comando
-    
-    # Simulación de movimiento (remover en producción real)
-    if comando.lower().startswith("g01"):
-        partes = comando.split()
-        for parte in partes[1:]:
-            if parte.upper().startswith("X"):
-                coordenadas_actuales["X"] = float(parte[1:])
-            elif parte.upper().startswith("Y"):
-                coordenadas_actuales["Y"] = float(parte[1:])
-            elif parte.upper().startswith("Z"):
-                coordenadas_actuales["Z"] = float(parte[1:])
-    
+    comando = data.get("comando", "").strip()
+    if comando:
+        ultimo_comando = comando
+        return jsonify({
+            "status": "ok",
+            "message": f"Comando '{comando}' recibido correctamente"
+        }), 200
+    else:
+        return jsonify({"status": "error", "message": "Comando vacío"}), 400
+
+# Ruta para que la ESP32 obtenga el último comando
+@app.route("/api/obtener-comando", methods=["GET"])
+def obtener_comando():
+    global ultimo_comando
+    comando = ultimo_comando
+    # No limpiamos el comando aquí para permitir múltiples lecturas
     return jsonify({
         "status": "ok",
-        "respuesta": f"Comando '{comando}' ejecutado",
-        "coordenadas": coordenadas_actuales
-    })
-
-# Ruta para obtener estado (opcional)
-@app.route("/api/estado", methods=["GET"])
-def obtener_estado():
-    return jsonify({
-        "ultimo_comando": ultimo_comando,
-        "coordenadas": coordenadas_actuales,
+        "comando": comando,
         "timestamp": datetime.now().isoformat()
-    })
+    }), 200
+
+# Ruta para que la ESP32 envíe respuestas
+@app.route("/api/respuesta", methods=["POST"])
+def recibir_respuesta():
+    global ultima_respuesta
+    data = request.get_json()
+    if not data:
+        return jsonify({"status": "error", "message": "No se recibió JSON"}), 400
+    
+    respuesta = data.get("respuesta", "").strip()
+    if respuesta:
+        ultima_respuesta = respuesta
+        return jsonify({
+            "status": "ok",
+            "message": f"Respuesta '{respuesta}' recibida correctamente"
+        }), 200
+    else:
+        return jsonify({"status": "error", "message": "Respuesta vacía"}), 400
+
+# Ruta para que el HMI obtenga la última respuesta de la ESP32
+@app.route("/api/obtener-respuesta", methods=["GET"])
+def obtener_respuesta():
+    global ultima_respuesta
+    respuesta = ultima_respuesta
+    # No limpiamos la respuesta aquí para permitir múltiples lecturas
+    return jsonify({
+        "status": "ok",
+        "respuesta": respuesta,
+        "timestamp": datetime.now().isoformat()
+    }), 200
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000, debug=True)
