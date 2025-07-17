@@ -2,8 +2,8 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# Almacenamiento temporal en memoria (puede usar base de datos después)
-comando_pendiente = None
+# Comando global que guarda el último enviado por el HMI
+ultimo_comando = ""
 
 @app.route("/", methods=["GET"])
 def index():
@@ -11,22 +11,21 @@ def index():
 
 @app.route("/api/comando", methods=["POST"])
 def recibir_comando():
-    global comando_pendiente
+    global ultimo_comando
     data = request.get_json()
     comando = data.get("comando", "").strip()
     if comando:
-        comando_pendiente = comando  # Guardamos el comando
-        return jsonify({"status": "ok", "mensaje": f"Comando '{comando}' recibido"}), 200
-    return jsonify({"status": "error", "mensaje": "Comando vacío"}), 400
+        ultimo_comando = comando
+        return jsonify({"status": "ok", "mensaje": f"Comando recibido: {comando}"}), 200
+    else:
+        return jsonify({"status": "error", "mensaje": "Comando vacío"}), 400
 
 @app.route("/api/comando-pendiente", methods=["GET"])
-def enviar_comando_al_esp32():
-    global comando_pendiente
-    if comando_pendiente:
-        comando_a_enviar = comando_pendiente
-        comando_pendiente = None  # Lo marcamos como entregado
-        return jsonify({"comando": comando_a_enviar}), 200
-    return jsonify({"comando": ""}), 200  # Nada que enviar
+def enviar_comando():
+    global ultimo_comando
+    comando = ultimo_comando
+    ultimo_comando = ""  # Limpiar después de entregar al ESP32
+    return jsonify({"comando": comando}), 200
 
 if __name__ == "__main__":
     app.run(debug=True)
