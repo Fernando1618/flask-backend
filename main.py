@@ -5,13 +5,24 @@ app = Flask(__name__)
 @app.route('/api/mensaje', methods=['POST'])
 def handle_message():
     data = request.json
-    comando = data.get('comando')
+    comando = data.get('comando', '').upper()  # Convertir a mayúsculas
     
-    if comando == 'ping':
-        return jsonify({"status": "ok"})
+    if comando.startswith(('G00', 'G01')):
+        try:
+            # Enviar comando al ESP32 via serial
+            ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
+            ser.write(f"{comando}\n".encode())
+            ser.close()
+            
+            return jsonify({
+                "status": "success",
+                "respuesta": "Comando enviado al motor",
+                "comando": comando
+            })
+        except Exception as e:
+            return jsonify({
+                "status": "error",
+                "error": str(e)
+            }), 500
     
-    # Aquí procesar otros comandos...
     return jsonify({"status": "received", "comando": comando})
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)
