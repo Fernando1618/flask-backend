@@ -1,3 +1,2 @@
 flask
 gunicorn
-pyserial==3.5
