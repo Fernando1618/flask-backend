@@ -1,47 +1,31 @@
 from flask import Flask, request, jsonify
-from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)  # Habilita CORS para todas las rutas
 
-# Almacenamiento para comunicación bidireccional
-ultimo_comando_hmi = ""
-ultima_respuesta_esp = ""
+# Comando global que guarda el último enviado por el HMI
+ultimo_comando = ""
 
-@app.route("/")
-def home():
-    return jsonify({"status": "ok", "message": "API operativa"})
+@app.route("/", methods=["GET"])
+def index():
+    return jsonify({"message": "API funcionando correctamente"}), 200
 
-# Ruta para que el HMI envíe comandos
-@app.route("/api/hmi/comando", methods=["POST"])
-def recibir_comando_hmi():
-    global ultimo_comando_hmi
+@app.route("/api/comando", methods=["POST"])
+def recibir_comando():
+    global ultimo_comando
     data = request.get_json()
-    
-    if not data or "comando" not in data:
-        return jsonify({"error": "Datos inválidos"}), 400
-    
-    ultimo_comando_hmi = data["comando"]
-    return jsonify({"status": "ok", "comando_recibido": ultimo_comando_hmi})
+    comando = data.get("comando", "").strip()
+    if comando:
+        ultimo_comando = comando
+        return jsonify({"status": "ok", "mensaje": f"Comando recibido: {comando}"}), 200
+    else:
+        return jsonify({"status": "error", "mensaje": "Comando vacío"}), 400
 
-# Ruta para que el ESP32 obtenga comandos
-@app.route("/api/esp32/obtener-comando", methods=["GET"])
-def obtener_comando_esp32():
-    return jsonify({"comando": ultimo_comando_hmi})
+@app.route("/api/comando-pendiente", methods=["GET"])
+def enviar_comando():
+    global ultimo_comando
+    comando = ultimo_comando
+    ultimo_comando = ""  # Limpiar después de entregar al ESP32
+    return jsonify({"comando": comando}), 200
 
-# Ruta para que el ESP32 envíe respuestas
-@app.route("/api/esp32/respuesta", methods=["POST"])
-def recibir_respuesta_esp32():
-    global ultima_respuesta_esp
-    data = request.get_json()
-    
-    if not data or "respuesta" not in data:
-        return jsonify({"error": "Datos inválidos"}), 400
-    
-    ultima_respuesta_esp = data["respuesta"]
-    return jsonify({"status": "ok", "respuesta_recibida": ultima_respuesta_esp})
-
-# Ruta para que el HMI obtenga respuestas
-@app.route("/api/hmi/obtener-respuesta", methods=["GET"])
-def obtener_respuesta_hmi():
-    return jsonify({"respuesta": ultima_respuesta_esp})
+if __name__ == "__main__":
+    app.run(debug=True)
