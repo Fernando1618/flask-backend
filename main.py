@@ -1,12 +1,15 @@
 from flask import Flask, request, jsonify
+from collections import deque
+from datetime import datetime
 
 app = Flask(__name__)
 
 # Variables globales
-ultimo_comando = ""
-respuesta_esp32 = ""
+comandos_pendientes = deque()
+respuesta_esp32 = {"mensaje": "", "timestamp": ""}
 datos_tof = {}
 
+# 🔹 Ping simple
 @app.route("/", methods=["GET"])
 def index():
     return jsonify({"message": "API funcionando correctamente"}), 200
@@ -14,40 +17,39 @@ def index():
 # 🔹 HMI → Enviar comando
 @app.route("/api/mensaje", methods=["POST"])
 def recibir_comando():
-    global ultimo_comando
     data = request.get_json()
     comando = data.get("comando", "").strip()
     if comando:
-        ultimo_comando = comando
-        return jsonify({"respuesta": f"Comando recibido: {comando}"}), 200
+        comandos_pendientes.append(comando)
+        return jsonify({"respuesta": f"Comando encolado: {comando}"}), 200
     else:
         return jsonify({"error": "Comando vacío"}), 400
 
-# 🔹 ESP32 → Pedir comando pendiente
+# 🔹 ESP32 → Pedir próximo comando
 @app.route("/api/comando-pendiente", methods=["GET"])
 def enviar_comando():
-    global ultimo_comando
-    comando = ultimo_comando
-    ultimo_comando = ""  # Limpiar después de enviar
-    return jsonify({"comando": comando}), 200
+    if comandos_pendientes:
+        comando = comandos_pendientes.popleft()
+        return jsonify({"comando": comando}), 200
+    else:
+        return jsonify({"comando": ""}), 200
 
-# 🔹 ESP32 → Enviar respuesta o estado
+# 🔹 ESP32 → Enviar respuesta/estado
 @app.route("/api/respuesta", methods=["POST"])
 def recibir_respuesta():
-    global respuesta_esp32
     data = request.get_json()
-    respuesta = data.get("respuesta", "")
-    if respuesta:
-        respuesta_esp32 = respuesta
+    mensaje = data.get("respuesta", "").strip()
+    if mensaje:
+        respuesta_esp32["mensaje"] = mensaje
+        respuesta_esp32["timestamp"] = datetime.now().isoformat()
         return jsonify({"status": "ok"}), 200
     else:
         return jsonify({"status": "error", "mensaje": "Respuesta vacía"}), 400
 
-# 🔹 HMI → Consultar última respuesta
+# 🔹 HMI → Obtener última respuesta
 @app.route("/api/respuesta", methods=["GET"])
 def obtener_respuesta():
-    global respuesta_esp32
-    return jsonify({"respuesta": respuesta_esp32}), 200
+    return jsonify(respuesta_esp32), 200
 
 # 🔹 ESP32 → Enviar datos ToF
 @app.route("/api/tof", methods=["POST"])
@@ -59,11 +61,19 @@ def recibir_tof():
         return jsonify({"status": "ok"}), 200
     return jsonify({"status": "error", "mensaje": "Datos vacíos"}), 400
 
-# 🔹 HMI → Obtener datos ToF
+# 🔹 HMI → Obtener ToF
 @app.route("/api/tof", methods=["GET"])
 def enviar_tof():
-    global datos_tof
     return jsonify({"tof": datos_tof}), 200
+
+# 🔹 Diagnóstico general
+@app.route("/api/status", methods=["GET"])
+def estado_general():
+    return jsonify({
+        "pendientes": len(comandos_pendientes),
+        "ultima_respuesta": respuesta_esp32,
+        "tof": datos_tof
+    }), 200
 
 if __name__ == "__main__":
     app.run(debug=True)
